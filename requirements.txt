@@ -1,0 +1,10 @@
+transformers
+evaluate
+datasets
+requests
+pandas
+scikit-learn
+fair-esm
+wandb
+graph-part
+python-Levenshtein
