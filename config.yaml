@@ -1,0 +1,45 @@
+# Model & LoRA settings
+model:
+  checkpoint: "facebook/esm2_t33_650M_UR50D"
+  rank: 8
+  dropout: 0.05
+
+# Training hyper-parameters
+training:
+  max_length: 701          # sequence max length
+  batch_size: 4
+  epochs: 4
+  lr: 5e-4
+  weight_decay: 1e-3
+  strength_threshold: 0.5  # normalized abs difference threshold for filtering
+  beta: 1.0                # reward weight
+  reg_weight: 0.5          # MLM regularization weight
+  preference_weight: 0.0   # label-smoothing / preference weight
+  grad_accum: 1            # gradient accumulation steps
+  print_interval: 10       # steps between validations & metrics logging
+
+# Data paths & splitting
+data:
+  fasta: "/projects/m000139/dhy/esm/dataset/ADAR_variants.fasta"
+  txt:   "/projects/m000139/dhy/esm/dataset/mutation_inf.txt"
+  sep:   "\t"
+  split_method: "random"
+  stream_train: true  # Use streaming to reduce memory usage
+  num_workers: 4  # Adjust based on CPU cores
+  chunk_size: 10000  # Process data in smaller chunks
+  split_kwargs:
+    alignment_mode: "needle"
+    threads: 8
+    threshold: 0.5
+    test_size: 0.15
+    valid_size: 0.05
+
+
+
+# Checkpoint saving
+save:
+  checkpoint_path: "./checkpoints/test/policy_final.pth"
+
+# Simple file logger settings
+logging:
+  log_file: "./checkpoints/test/train.log"
