@@ -296,10 +296,299 @@ python perturb_motif.py    # Analyze motif perturbations
 
 ## Notebooks
 
-The repository contains several Jupyter notebooks:
+The repository contains several Jupyter notebooks for comprehensive model training and evaluation:
 
-- `notebooks/baselines/tm_design_v0_1(LRH).ipynb`: Main training and evaluation notebook
-- `notebooks/tm_design_v0_2.ipynb`: Advanced model implementation
+- `notebooks/baselines/tm_design_v0_0.ipynb`: Basic baseline evaluation with traditional ML approaches
+- `notebooks/baselines/tm_design_v0_1(LRH).ipynb`: Supervised Fine-Tuning (SFT) baseline with LoRA
+- `notebooks/tm_design_v0_2.ipynb`: Advanced SMPO (Score-based Preference Optimization) implementation
+
+### Comprehensive Notebook Instructions
+
+#### Prerequisites for All Notebooks
+
+**Environment Setup:**
+All notebooks are designed to run in Google Colab with the following requirements:
+- Google Colab Pro recommended (for A100 GPU access)
+- Google Drive mounted for data storage and model checkpoints
+- At least 25GB of available GPU memory for 150M parameter models
+
+**Data Requirements:**
+- CSV files with protein sequences and fitness scores
+- Required columns: `Sequence`/`aa_seq` (amino acid sequences) and score columns
+- Files should be uploaded to Google Drive and paths updated in notebook cells
+
+#### Baseline Notebook 1: SFT Training (`tm_design_v0_1(LRH).ipynb`)
+
+This notebook implements **Supervised Fine-Tuning (SFT)** of ESM-2 with LoRA for protein fitness prediction.
+
+**Step-by-Step Execution:**
+
+1. **Mount Google Drive & Install Dependencies**
+   ```python
+   # Cell 1: Mount Google Drive
+   from google.colab import drive
+   drive.mount('/content/drive')
+   
+   # Cell 2: Install required packages
+   !pip install transformers evaluate datasets requests pandas scikit-learn fair-esm wandb graph-part python-Levenshtein
+   ```
+
+2. **Install Bioinformatics Tools (for homology partitioning)**
+   ```python
+   # Cell 3: Install conda and bioinformatics tools
+   import condacolab
+   condacolab.install()
+   # Restart runtime after this step
+   
+   # Cell 4: Install alignment tools
+   !mamba install -y -c bioconda emboss mmseqs2
+   ```
+
+3. **Data Preparation & Partitioning**
+   
+   **Option A: Homology-based Partitioning (Recommended)**
+   ```python
+   # Update the file path to your data
+   df = pd.read_csv('/content/your_data.csv')  # Replace with your file path
+   sequences = df['AA_without_adapter'].tolist()  # Update column name as needed
+   
+   # Homology-based splitting using graph partitioning
+   train_idx, test_idx, valid_idx = train_test_validation_split(
+       sequences,
+       alignment_mode='mmseqs2',  # or 'needle' for more precise alignment
+       threads=8,
+       threshold=0.5,  # 50% sequence similarity threshold
+       test_size=0.15,  # 15% for testing
+       valid_size=0.05,  # 5% for validation
+       denominator="full",
+       prefilter=True
+   )
+   ```
+   
+   **Option B: Random Partitioning**
+   ```python
+   # Simple random splitting function (included in notebook)
+   train_df, val_df, test_df = split_and_save_dataframe(
+       df, 
+       train_ratio=0.8, 
+       val_ratio=0.05, 
+       test_ratio=0.15,
+       train_file='tf_library_train.csv', 
+       val_file='tf_library_val.csv', 
+       test_file='tf_library_test.csv'
+   )
+   ```
+
+4. **Model Configuration**
+   ```python
+   # Key hyperparameters (modify as needed)
+   model_size = (30, '150M')  # ESM-2 30-layer 150M parameter model
+   model_checkpoint = f"facebook/esm2_t{model_size[0]}_{model_size[1]}_UR50D"
+   
+   # LoRA configuration
+   rank = 8  # LoRA rank (8 recommended)
+   num_layers = 2  # Number of top layers to apply LoRA (2 = last 2 layers)
+   dropout_rate = 0.05  # Dropout rate for regularization
+   
+   # Training hyperparameters
+   lr = 5e-4  # Learning rate
+   batch_size = 32  # Batch size
+   epochs = 50  # Number of training epochs
+   max_length = 250  # Maximum sequence length
+   ```
+
+5. **Model Preparation & Training**
+   ```python
+   # Prepare model with LoRA and regression head
+   tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
+   base_model = EsmModel.from_pretrained(model_checkpoint)
+   model = prepare_model(base_model, rank=rank, num_layers=num_layers, dropout_rate=dropout_rate)
+   
+   # Setup training components
+   optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-3)
+   scheduler = CosineAnnealingWithMinLRScheduler(optimizer, num_warmup_steps, num_hold_steps, num_training_steps, min_lr=1e-5)
+   
+   # Initialize Weights & Biases logging
+   wandb.login()  # Enter your W&B API key when prompted
+   wandb.init(project="protein-sft", name="esm2-lora-sft")
+   ```
+
+6. **Dataset Setup & Training Loop**
+   ```python
+   # Create datasets (update file paths)
+   train_dataset = TMLibrary(
+       file_path="/content/tf_library_train.csv",  # Update path
+       tokenizer=tokenizer, 
+       max_length=max_length, 
+       score_key="Avg"  # Update to match your score column name
+   )
+   
+   val_dataset = TMLibrary(
+       file_path="/content/tf_library_val.csv",  # Update path
+       tokenizer=tokenizer, 
+       max_length=max_length, 
+       score_key="Avg"
+   )
+   
+   # Run training
+   train(model, optimizer, scheduler, train_dataloader, val_dataloader, 
+         gradient_accumulation_steps=8, epochs=epochs, print_interval=100)
+   ```
+
+7. **Model Evaluation & Cross-Validation**
+   ```python
+   # The notebook includes comprehensive evaluation with K-fold cross-validation
+   # Results are automatically logged to W&B and saved to Google Drive
+   # Expected R² score: ~0.55 for the SFT model
+   ```
+
+8. **Save Trained Model**
+   ```python
+   # Save model checkpoint
+   torch.save(model.state_dict(), '/content/drive/MyDrive/sft_model_checkpoint.pth')
+   ```
+
+#### Advanced SMPO Notebook (`tm_design_v0_2.ipynb`)
+
+This notebook implements **Score-based Preference Optimization (SMPO)** using Direct Preference Optimization (DPO) for improved protein fitness prediction.
+
+**Step-by-Step Execution:**
+
+1. **Environment Setup** (Same as SFT notebook)
+   - Mount Google Drive
+   - Install dependencies including transformers, wandb, graph-part
+   - Install bioinformatics tools if using homology partitioning
+
+2. **Data Preparation** (Enhanced for preference learning)
+   ```python
+   # SMPO requires preference pairs - sequences ranked by fitness scores
+   # The TMLibrary class automatically creates preference pairs from scored sequences
+   
+   # Update file paths to your data
+   train_dataset = TMLibrary(
+       file_path="/content/tm_library_train_jhp.csv",  # Update path
+       tokenizer=tokenizer, 
+       max_length=max_length, 
+       split='train', 
+       frac=0.25,  # Use 25% of data (modify as needed)
+       threshold=0.0  # Minimum score threshold
+   )
+   
+   val_dataset = TMLibrary(
+       file_path="/content/tm_library_val_jhp.csv",  # Update path
+       tokenizer=tokenizer, 
+       max_length=max_length, 
+       split='val'
+   )
+   ```
+
+3. **Model Configuration for SMPO**
+   ```python
+   # Load pre-trained SFT model as starting point
+   model = prepare_model(EsmForMaskedLM.from_pretrained(model_checkpoint), 
+                        rank=8, num_layers=model_size[0], dropout_rate=0.05)
+   
+   # Reference model (frozen copy of original model)
+   ref_model = freeze_model(EsmForMaskedLM.from_pretrained(model_checkpoint))
+   
+   # SMPO-specific hyperparameters
+   beta = 1.0  # DPO reward scaling parameter (higher = more aggressive preference learning)
+   reg_weight = 0.5  # MLM regularization weight (0.1-0.5 recommended)
+   preference_weight = 0.1  # Label smoothing for preference learning
+   gradient_accumulation_steps = 8
+   print_interval = 100
+   ```
+
+4. **DPO Training Configuration**
+   ```python
+   # Key SMPO training parameters
+   lr = 5e-4  # Learning rate 
+   batch_size = 8  # Smaller batch size due to preference pairs
+   epochs = 1  # Usually 1 epoch is sufficient for DPO fine-tuning
+   max_length = 250  # Maximum sequence length
+   
+   # Multi-layer perceptron for adaptive beta scaling (optional)
+   mnn = torch.nn.Sequential(
+       torch.nn.Linear(1, 16),
+       torch.nn.ReLU(),
+       torch.nn.Linear(16, 1),
+       torch.nn.Sigmoid()
+   ).to(device)
+   ```
+
+5. **Training Loop Execution**
+   ```python
+   # Initialize optimizers
+   optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), 
+                                lr=lr, weight_decay=1e-3)
+   scheduler = CosineAnnealingWithMinLRScheduler(optimizer, num_warmup_steps, num_hold_steps, 
+                                               num_training_steps, min_lr=1e-5)
+   
+   # Initialize logging
+   wandb.init(project="protein-smpo", name=f"esm2-smpo-{beta}beta-{reg_weight}reg")
+   
+   # Run SMPO training
+   train(model, ref_model, mnn, optimizer, scheduler, train_dataloader, val_dataloader,
+         gradient_accumulation_steps=gradient_accumulation_steps, 
+         epochs=epochs, 
+         beta=beta, 
+         reg_weight=reg_weight, 
+         preference_weight=preference_weight, 
+         print_interval=print_interval)
+   ```
+
+6. **Model Evaluation & Analysis**
+   ```python
+   # The notebook includes comprehensive evaluation:
+   # - Preference accuracy tracking
+   # - Reward margin analysis  
+   # - MLM loss monitoring
+   # - K-fold cross-validation with R² scores
+   # Expected R² improvement: ~0.55 (SFT) → 0.63 (SMPO)
+   ```
+
+7. **Sparse Autoencoder (SAE) Analysis** (Optional)
+   ```python
+   # Train SAE for interpretability analysis
+   sae = SparseAutoencoder(input_dim=hidden_dim, latent_dim=256)
+   trained_sae = train_sae(sae, activations, num_epochs=50, lr=5e-4)
+   
+   # Save SAE for later analysis
+   torch.save(sae.state_dict(), '/content/drive/MyDrive/sae_SMPO_model.pth')
+   ```
+
+### Key Configuration Notes
+
+**Data Format Requirements:**
+- **For SFT:** CSV with `Sequence` and numerical score columns
+- **For SMPO:** Same format, but TMLibrary class automatically creates preference pairs based on score rankings
+
+**Memory Optimization:**
+- Use gradient accumulation (8 steps recommended) for larger effective batch sizes
+- Reduce `max_length` if experiencing OOM errors
+- Consider using smaller model variants (ESM-2 8M or 35M) for prototyping
+
+**Hyperparameter Tuning:**
+- **Beta (β):** Controls preference learning strength (0.1-1.0, higher = more aggressive)
+- **reg_weight:** MLM regularization strength (0.1-0.5, prevents catastrophic forgetting)
+- **Learning rate:** 5e-4 works well, reduce to 1e-4 for more stable training
+- **LoRA rank:** 8 provides good balance of efficiency and expressiveness
+
+**Expected Training Times:**
+- **SFT (50 epochs):** 2-4 hours on A100 GPU
+- **SMPO (1 epoch):** 1-2 hours on A100 GPU
+- **SAE training:** 30-60 minutes additional
+
+**Troubleshooting:**
+- **OOM errors:** Reduce batch size, max_length, or use gradient checkpointing
+- **Diverging loss:** Reduce learning rate or beta parameter
+- **Poor convergence:** Increase training epochs or adjust scheduler parameters
+
+**Results Reproduction:**
+- Use the exact hyperparameters specified in the notebooks
+- Ensure proper data partitioning (homology-based recommended)
+- Run multiple seeds and report average performance
+- Expected results: SFT R² ≈ 0.55, SMPO R² ≈ 0.63
 
 ## Data Requirements
 
