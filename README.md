@@ -1,12 +1,6 @@
 # SMPO: Score-Based Preference Optimization for Protein Fitness Modeling 
 Preference tuning protein language models with low N experimental datasets
 
-# Protein Function Prediction with ESM-2 and LoRA
-
-This repository is the official implementation of [Protein Function Prediction with ESM-2 and LoRA](https://arxiv.org/abs/2030.12345). 
-
->📋 Optional: include a graphic explaining your approach/main result, bibtex entry, link to demos, blog posts and tutorials
-
 ## Requirements
 
 To install requirements:
