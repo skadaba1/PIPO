@@ -1,4 +1,4 @@
-# PIPO
+# SMPO: Score-Based Preference Optimization for Protein Fitness Modeling 
 Preference tuning protein language models with low N experimental datasets
 
 # Protein Function Prediction with ESM-2 and LoRA
