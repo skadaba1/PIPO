@@ -1,10 +1,18 @@
-transformers
-evaluate
-datasets
-requests
-pandas
-scikit-learn
-fair-esm
-wandb
-graph-part
-python-Levenshtein
+transformers==4.51.3
+evaluate==0.4.3
+datasets==2.14.4
+requests==2.32.3
+pandas==2.2.2
+scikit-learn==1.6.1
+fair-esm==2.0.0
+wandb==0.19.11
+graph-part==1.0.2
+python-Levenshtein==0.27.1
+torch>=2.0
+tueplots==0.2.0
+matplotlib==3.10.0
+numpy==2.0.2
+scipy
+# For data partitioning using graph-part, mmseqs2 and emboss are also required.
+# These are best installed via conda:
+# conda install -c bioconda mmseqs2 emboss
