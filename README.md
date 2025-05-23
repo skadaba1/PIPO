@@ -44,7 +44,7 @@ The repository provides several standalone Python scripts for training:
 
 #### Main Training Script (`core/main.py`)
 
-This script implements the core PIPO training using Direct Preference Optimization (DPO):
+This script implements the core SMDPO training:
 
 ```bash
 # Example usage (requires modification of file paths in the script)
